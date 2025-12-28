@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free Spin Wheel - Prize Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --wheel-size: 400px;
+            --rim-color: #d4af37;
+            --rim-highlight: #f4d47d;
+            --rim-shadow: #8b7320;
+            --pointer-color: #ff3838;
+            --button-bg: #4ecdc4;
+            --button-hover: #45b8af;
+            --button-disabled: #95a5a6;
+            --bg-gradient-start: #1a1a2e;
+            --bg-gradient-end: #16213e;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            width: min(90vw, var(--wheel-size));
+            height: min(90vw, var(--wheel-size));
+            margin: 20px auto;
+        }
+
+        #background-layer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.3) 100%);
+            border-radius: 50%;
+            box-shadow: 0 0 80px rgba(0,0,0,0.5);
+        }
+
+        #wheel-canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            height: 100%;
+        }
+
+        #pointer-layer {
+            position: absolute;
+            top: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 20px solid transparent;
+            border-right: 20px solid transparent;
+            border-top: 40px solid var(--pointer-color);
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+            z-index: 100;
+            transform-origin: center bottom;
+            transition: transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        #pointer-layer::after {
+            content: '';
+            position: absolute;
+            top: -40px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 15px;
+            height: 15px;
+            background: var(--pointer-color);
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        #button-layer {
+            position: absolute;
+            bottom: -80px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+
+        #spin-button {
+            padding: 16px 48px;
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
+            background: linear-gradient(135deg, var(--button-bg) 0%, var(--button-hover) 100%);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(78, 205, 196, 0.4);
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #spin-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(78, 205, 196, 0.6);
+        }
+
+        #spin-button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        #spin-button:disabled {
+            background: var(--button-disabled);
+            cursor: not-allowed;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        #result-display {
+            position: absolute;
+            bottom: -140px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            white-space: nowrap;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+        }
+
+        #result-display.show {
+            opacity: 1;
+        }
+
+        h1 {
+            color: white;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 2.5em;
+            text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            background: linear-gradient(135deg, #f4d47d 0%, #d4af37 50%, #8b7320 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        @media (max-width: 600px) {
+            :root {
+                --wheel-size: 320px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            #spin-button {
+                padding: 12px 36px;
+                font-size: 16px;
+            }
+
+            #result-display {
+                font-size: 18px;
+            }
+
+            #pointer-layer {
+                border-left-width: 15px;
+                border-right-width: 15px;
+                border-top-width: 30px;
+            }
+        }
+
+        /* Loading animation */
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.05); }
+        }
+    </style>
+</head>
+<body>
+    <h1>🎰 Free Spin Wheel 🎰</h1>
+
+    <div id="game-container">
+        <div id="background-layer"></div>
+        <canvas id="wheel-canvas"></canvas>
+        <div id="pointer-layer"></div>
+        <div id="button-layer">
+            <button id="spin-button" aria-label="Spin the wheel">Spin the Wheel</button>
+        </div>
+        <div id="result-display" role="status" aria-live="polite"></div>
+    </div>
+
+    <script>
+        // ==================== CONFIGURATION ====================
+        const config = {
+            slices: [
+                { label: "100$", value: 100, color: "#ff6b6b" },
+                { label: "50$", value: 50, color: "#4ecdc4" },
+                { label: "10$", value: 10, color: "#f9ca24" },
+                { label: "500$", value: 500, color: "#9b59b6" },
+                { label: "20$", value: 20, color: "#3498db" },
+                { label: "5$", value: 5, color: "#e67e22" },
+                { label: "200$", value: 200, color: "#1abc9c" },
+                { label: "0$", value: 0, color: "#95a5a6" }
+            ],
+            physics: {
+                friction: 0.982,
+                minSpins: 4,
+                maxSpins: 6,
+                initialTorque: 0.6,
+                wobbleFrequency: 0.3,
+                wobbleAmplitude: 0.006,
+                settleDuration: 400,
+                minVelocity: 0.001,
+                overshoot: 0.08,
+                bounceDamping: 0.3
+            },
+            visual: {
+                rimWidth: 15,
+                fontSize: 18,
+                fontFamily: "'Segoe UI', sans-serif",
+                textColor: "#ffffff",
+                shadowBlur: 10
+            },
+            onTick: () => {
+                // Trigger pointer bounce animation
+                triggerPointerBounce();
+                // Could play tick sound here
+                // new Audio('tick.mp3').play();
+            },
+            onSpinStart: () => {
+                console.log("Spin started!");
+            },
+            onSpinEnd: (result) => {
+                console.log("Spin ended, result:", result);
+            },
+            onResult: (value) => {
+                showResult(value);
+            }
+        };
+
+        // ==================== SETUP ====================
+        const canvas = document.getElementById('wheel-canvas');
+        const ctx = canvas.getContext('2d');
+        const spinButton = document.getElementById('spin-button');
+        const resultDisplay = document.getElementById('result-display');
+        const pointer = document.getElementById('pointer-layer');
+
+        let wheelSize, centerX, centerY, radius;
+
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            const size = container.offsetWidth;
+            canvas.width = size;
+            canvas.height = size;
+            wheelSize = size;
+            centerX = size / 2;
+            centerY = size / 2;
+            radius = (size / 2) - config.visual.rimWidth;
+
+            if (!isSpinning) {
+                drawWheel(currentAngle);
+            }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // ==================== PHYSICS STATE ====================
+        let currentAngle = 0;
+        let angularVelocity = 0;
+        let targetAngle = 0;
+        let isSpinning = false;
+        let frameCount = 0;
+        let lastSliceIndex = -1;
+        let pointerBounce = 0;
+        let isSettling = false;
+        let settleStartTime = 0;
+        let overshootPhase = false;
+
+        // ==================== DRAWING FUNCTIONS ====================
+        function drawWheel(angle) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw rim (outer ring)
+            drawRim();
+
+            // Draw slices
+            drawSlices(angle);
+
+            // Draw center circle
+            drawCenter();
+        }
+
+        function drawRim() {
+            ctx.save();
+
+            // Outer rim with gradient
+            const gradient = ctx.createLinearGradient(
+                centerX, centerY - radius - config.visual.rimWidth,
+                centerX, centerY + radius + config.visual.rimWidth
+            );
+            gradient.addColorStop(0, getComputedStyle(document.documentElement).getPropertyValue('--rim-highlight').trim());
+            gradient.addColorStop(0.5, getComputedStyle(document.documentElement).getPropertyValue('--rim-color').trim());
+            gradient.addColorStop(1, getComputedStyle(document.documentElement).getPropertyValue('--rim-shadow').trim());
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius + config.visual.rimWidth, 0, Math.PI * 2);
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2, true);
+            ctx.fill();
+
+            // Inner shadow for depth
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawSlices(angle) {
+            const sliceAngle = (Math.PI * 2) / config.slices.length;
+
+            config.slices.forEach((slice, index) => {
+                const startAngle = angle + (index * sliceAngle) - Math.PI / 2;
+                const endAngle = startAngle + sliceAngle;
+                const midAngle = startAngle + sliceAngle / 2;
+
+                ctx.save();
+
+                // Draw slice background with gradient
+                const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+                gradient.addColorStop(0, lightenColor(slice.color, 20));
+                gradient.addColorStop(1, slice.color);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+                ctx.lineTo(centerX, centerY);
+                ctx.fill();
+
+                // Slice border for definition
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.lineTo(
+                    centerX + Math.cos(startAngle) * radius,
+                    centerY + Math.sin(startAngle) * radius
+                );
+                ctx.stroke();
+
+                // Inner shadow for depth
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.lineTo(
+                    centerX + Math.cos(endAngle) * radius,
+                    centerY + Math.sin(endAngle) * radius
+                );
+                ctx.stroke();
+
+                // Draw text label
+                ctx.fillStyle = config.visual.textColor;
+                ctx.font = `bold ${config.visual.fontSize}px ${config.visual.fontFamily}`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                const textRadius = radius * 0.7;
+                const textX = centerX + Math.cos(midAngle) * textRadius;
+                const textY = centerY + Math.sin(midAngle) * textRadius;
+
+                // Text shadow for readability
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                ctx.shadowBlur = config.visual.shadowBlur;
+                ctx.shadowOffsetX = 2;
+                ctx.shadowOffsetY = 2;
+
+                ctx.save();
+                ctx.translate(textX, textY);
+                ctx.rotate(midAngle + Math.PI / 2);
+                ctx.fillText(slice.label, 0, 0);
+                ctx.restore();
+
+                ctx.restore();
+            });
+        }
+
+        function drawCenter() {
+            // Center circle with gradient
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 40);
+            gradient.addColorStop(0, '#ffffff');
+            gradient.addColorStop(0.3, '#f0f0f0');
+            gradient.addColorStop(1, '#d0d0d0');
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 40, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Center circle border
+            ctx.strokeStyle = '#999';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Small inner circle
+            ctx.fillStyle = '#666';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 10, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // ==================== UTILITY FUNCTIONS ====================
+        function lightenColor(color, percent) {
+            const num = parseInt(color.replace("#", ""), 16);
+            const amt = Math.round(2.55 * percent);
+            const R = Math.min(255, (num >> 16) + amt);
+            const G = Math.min(255, (num >> 8 & 0x00FF) + amt);
+            const B = Math.min(255, (num & 0x0000FF) + amt);
+            return `#${(0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1)}`;
+        }
+
+        function normalizeAngle(angle) {
+            return ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+        }
+
+        function getSliceAtPointer(angle) {
+            const normalizedAngle = normalizeAngle(-angle);
+            const sliceAngle = (Math.PI * 2) / config.slices.length;
+            const pointerAngle = Math.PI / 2; // Pointer is at top (90 degrees)
+            const adjustedAngle = normalizeAngle(normalizedAngle + pointerAngle);
+            const index = Math.floor(adjustedAngle / sliceAngle);
+            return config.slices.length - 1 - index;
+        }
+
+        function calculateTargetAngle(winnerIndex) {
+            const sliceAngle = (Math.PI * 2) / config.slices.length;
+            const sliceCenter = (winnerIndex * sliceAngle) + (sliceAngle / 2);
+            const pointerAngle = Math.PI / 2;
+            const targetAngle = (Math.PI * 2) - sliceCenter + pointerAngle;
+            return normalizeAngle(targetAngle);
+        }
+
+        function triggerPointerBounce() {
+            pointerBounce = 1;
+            pointer.style.transform = 'translateX(-50%) rotate(-10deg)';
+        }
+
+        function updatePointerBounce() {
+            if (pointerBounce > 0) {
+                pointerBounce *= 0.7;
+                if (pointerBounce < 0.01) {
+                    pointerBounce = 0;
+                    pointer.style.transform = 'translateX(-50%) rotate(0deg)';
+                }
+            }
+        }
+
+        function showResult(value) {
+            resultDisplay.textContent = `🎉 You won: ${value.label} 🎉`;
+            resultDisplay.classList.add('show');
+
+            setTimeout(() => {
+                resultDisplay.classList.remove('show');
+            }, 5000);
+        }
+
+        // ==================== PHYSICS SIMULATION ====================
+        function spinToIndex(index) {
+            if (isSpinning) return;
+
+            isSpinning = true;
+            spinButton.disabled = true;
+            resultDisplay.classList.remove('show');
+            frameCount = 0;
+            lastSliceIndex = -1;
+            isSettling = false;
+            overshootPhase = false;
+
+            config.onSpinStart();
+
+            // Calculate target angle
+            const baseTarget = calculateTargetAngle(index);
+            const extraSpins = config.physics.minSpins +
+                              Math.random() * (config.physics.maxSpins - config.physics.minSpins);
+            targetAngle = currentAngle + (Math.PI * 2 * extraSpins) + baseTarget;
+
+            // Set initial velocity
+            angularVelocity = config.physics.initialTorque;
+
+            animate();
+        }
+
+        function spinRandom() {
+            const randomIndex = Math.floor(Math.random() * config.slices.length);
+            spinToIndex(randomIndex);
+        }
+
+        function animate() {
+            if (!isSpinning) return;
+
+            frameCount++;
+
+            // Update physics
+            if (!isSettling) {
+                // Apply friction
+                angularVelocity *= config.physics.friction;
+                currentAngle += angularVelocity;
+
+                // Add wobble effect at high speeds
+                const speedFactor = Math.min(1, angularVelocity / config.physics.initialTorque);
+                const wobble = Math.sin(frameCount * config.physics.wobbleFrequency) *
+                              config.physics.wobbleAmplitude *
+                              speedFactor;
+
+                // Check for slice boundary crossing (for tick effect)
+                const currentSlice = getSliceAtPointer(currentAngle);
+                if (currentSlice !== lastSliceIndex && speedFactor > 0.3) {
+                    lastSliceIndex = currentSlice;
+                    config.onTick();
+                }
+
+                // Check if we should start settling
+                const angleRemaining = targetAngle - currentAngle;
+                if (angularVelocity < config.physics.minVelocity ||
+                    (angleRemaining < Math.PI && angularVelocity < 0.05)) {
+                    isSettling = true;
+                    settleStartTime = Date.now();
+                }
+
+                drawWheel(currentAngle + wobble);
+            } else {
+                // Settling phase with smooth ease-in-out
+                const settleProgress = Math.min(1, (Date.now() - settleStartTime) / config.physics.settleDuration);
+                const easeProgress = easeInOutCubic(settleProgress);
+
+                const startAngle = currentAngle;
+                const angleRemaining = targetAngle - startAngle;
+
+                if (!overshootPhase && settleProgress < 0.8) {
+                    // Smooth approach with slight overshoot
+                    currentAngle = startAngle + (angleRemaining * easeProgress);
+                } else if (!overshootPhase) {
+                    // Trigger overshoot
+                    overshootPhase = true;
+                    currentAngle = targetAngle + (config.physics.overshoot * (Math.random() - 0.5));
+                } else {
+                    // Bounce back to final position
+                    const bounceProgress = (settleProgress - 0.8) / 0.2;
+                    const bounceEase = easeOutBounce(bounceProgress);
+                    const overshootStart = targetAngle + (config.physics.overshoot * (Math.random() - 0.5));
+                    currentAngle = overshootStart + ((targetAngle - overshootStart) * bounceEase);
+                }
+
+                drawWheel(currentAngle);
+
+                if (settleProgress >= 1) {
+                    // Snap to exact target
+                    currentAngle = targetAngle;
+                    isSpinning = false;
+                    angularVelocity = 0;
+                    spinButton.disabled = false;
+
+                    const winningSlice = config.slices[getSliceAtPointer(currentAngle)];
+                    config.onSpinEnd(winningSlice);
+                    config.onResult(winningSlice);
+
+                    drawWheel(currentAngle);
+                    return;
+                }
+            }
+
+            updatePointerBounce();
+            requestAnimationFrame(animate);
+        }
+
+        // Easing functions
+        function easeInOutCubic(t) {
+            return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        }
+
+        function easeOutBounce(t) {
+            const n1 = 7.5625;
+            const d1 = 2.75;
+            if (t < 1 / d1) {
+                return n1 * t * t;
+            } else if (t < 2 / d1) {
+                return n1 * (t -= 1.5 / d1) * t + 0.75;
+            } else if (t < 2.5 / d1) {
+                return n1 * (t -= 2.25 / d1) * t + 0.9375;
+            } else {
+                return n1 * (t -= 2.625 / d1) * t + 0.984375;
+            }
+        }
+
+        // ==================== EVENT LISTENERS ====================
+        spinButton.addEventListener('click', () => {
+            spinRandom();
+        });
+
+        // Initial draw
+        drawWheel(currentAngle);
+
+        // Expose API for external control
+        window.SpinWheel = {
+            spin: spinRandom,
+            spinToIndex: spinToIndex,
+            config: config
+        };
+    </script>
+</body>
+</html>
